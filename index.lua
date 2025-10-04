@@ -1,252 +1,401 @@
--- Arkan Scripts GUI Example using Drawing API
+-- Arkan Scripts GUI
+-- Contoh GUI menggunakan Drawing API (untuk executor seperti DeltaExploit)
+-- Fitur:
+-- - Window di tengah layar (rounded corners dibuat dari Square + 4 Circle)
+-- - Di kiri ada list menu, klik untuk ubah konten di kanan
+-- - Judul "Arkan Scripts" di atas, center
+-- - Tombol minimize: mengecil jadi circle dengan huruf 'A', klik lagi untuk restore
+-- Catatan: beberapa executor punya perbedaan (font, default Visible). Simpan referensi objek supaya tidak GC.
 
--- Assume input functions (adjust if Delta has different names)
-local function getMousePos()
-    -- If executor has getmousepos(), use it. Else, assume mouse object
-    local player = game.Players.LocalPlayer
-    local mouse = player:GetMouse()
-    return Vector2.new(mouse.X, mouse.Y)
-end
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local mouse = player and player:GetMouse()
 
-local function isLeftClickPressed()
-    -- Assume ismousebuttonpressed(0) for left click
-    return ismousebuttonpressed(0)  -- 0 = left, adjust if needed
-end
+-- Helper: make a rounded-rectangle using one Square and 4 Circles at corners
+local function CreateRoundedRect(pos, size, color, radius, zindex)
+    local parts = {}
+    local sq = Drawing.new("Square")
+    sq.Position = Vector2.new(pos.X + radius, pos.Y + radius)
+    sq.Size = Vector2.new(math.max(0, size.X - radius * 2), math.max(0, size.Y - radius * 2))
+    sq.Filled = true
+    sq.Color = color
+    sq.Transparency = 1
+    sq.ZIndex = zindex or 1
+    table.insert(parts, sq)
 
-local function getScreenSize()
-    -- Assume getscreensize() or use ViewportSize
-    return workspace.CurrentCamera.ViewportSize  -- Or Vector2.new(1920, 1080)
-end
+    -- left/right vertical rectangles (cover edges)
+    local left = Drawing.new("Square")
+    left.Position = Vector2.new(pos.X, pos.Y + radius)
+    left.Size = Vector2.new(radius, math.max(0, size.Y - radius * 2))
+    left.Filled = true
+    left.Color = color
+    left.Transparency = 1
+    left.ZIndex = zindex or 1
+    table.insert(parts, left)
 
--- GUI Config
-local guiWidth = 400
-local guiHeight = 300
-local cornerRadius = 10
-local bgColor = Color3.fromRGB(30, 30, 30)  -- Dark bg
-local textColor = Color3.fromRGB(255, 255, 255)
-local accentColor = Color3.fromRGB(0, 170, 255)
-local screenSize = getScreenSize()
-local guiPos = Vector2.new((screenSize.X - guiWidth) / 2, (screenSize.Y - guiHeight) / 2)  -- Centered
+    local right = Drawing.new("Square")
+    right.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+    right.Size = Vector2.new(radius, math.max(0, size.Y - radius * 2))
+    right.Filled = true
+    right.Color = color
+    right.Transparency = 1
+    right.ZIndex = zindex or 1
+    table.insert(parts, right)
 
--- State variables
-local isMinimized = false
-local selectedMenu = 1  -- Default Menu1
-local lastClickTime = 0  -- Debounce click
-local drawings = {}  -- Store all Drawing objects for easy destroy/manage
+    -- top/bottom horizontal rectangles
+    local top = Drawing.new("Square")
+    top.Position = Vector2.new(pos.X + radius, pos.Y)
+    top.Size = Vector2.new(math.max(0, size.X - radius * 2), radius)
+    top.Filled = true
+    top.Color = color
+    top.Transparency = 1
+    top.ZIndex = zindex or 1
+    table.insert(parts, top)
 
--- Function to create rounded rect (bg)
-local function createRoundedRect(pos, size, color, filled)
-    local rect = {}
-    
-    -- Main body square
-    local body = Drawing.new("Square")
-    body.Position = pos + Vector2.new(cornerRadius, 0)
-    body.Size = Vector2.new(size.X - 2 * cornerRadius, size.Y)
-    body.Color = color
-    body.Filled = filled
-    body.Thickness = 1
-    body.Visible = true
-    body.Transparency = 1
-    table.insert(rect, body)
-    table.insert(drawings, body)
-    
-    -- Top and bottom bars
-    local topBar = Drawing.new("Square")
-    topBar.Position = pos + Vector2.new(0, cornerRadius)
-    topBar.Size = Vector2.new(size.X, size.Y - 2 * cornerRadius)
-    topBar.Color = color
-    topBar.Filled = filled
-    topBar.Visible = true
-    topBar.Transparency = 1
-    table.insert(rect, topBar)
-    table.insert(drawings, topBar)
-    
+    local bottom = Drawing.new("Square")
+    bottom.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+    bottom.Size = Vector2.new(math.max(0, size.X - radius * 2), radius)
+    bottom.Filled = true
+    bottom.Color = color
+    bottom.Transparency = 1
+    bottom.ZIndex = zindex or 1
+    table.insert(parts, bottom)
+
     -- 4 corner circles
-    local corners = {
-        {pos, "top-left"},
-        {pos + Vector2.new(size.X - 2 * cornerRadius, 0), "top-right"},
-        {pos + Vector2.new(0, size.Y - 2 * cornerRadius), "bottom-left"},
-        {pos + Vector2.new(size.X - 2 * cornerRadius, size.Y - 2 * cornerRadius), "bottom-right"}
-    }
-    for _, c in ipairs(corners) do
-        local circle = Drawing.new("Circle")
-        circle.Position = c[1] + Vector2.new(cornerRadius, cornerRadius)
-        circle.Radius = cornerRadius
-        circle.NumSides = 32
-        circle.Color = color
-        circle.Filled = filled
-        circle.Visible = true
-        circle.Transparency = 1
-        table.insert(rect, circle)
-        table.insert(drawings, circle)
+    local c1 = Drawing.new("Circle")
+    c1.Position = Vector2.new(pos.X + radius, pos.Y + radius)
+    c1.Radius = radius
+    c1.Filled = true
+    c1.Color = color
+    c1.Transparency = 1
+    c1.NumSides = 32
+    c1.ZIndex = zindex or 1
+    table.insert(parts, c1)
+
+    local c2 = Drawing.new("Circle")
+    c2.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+    c2.Radius = radius
+    c2.Filled = true
+    c2.Color = color
+    c2.Transparency = 1
+    c2.NumSides = 32
+    c2.ZIndex = zindex or 1
+    table.insert(parts, c2)
+
+    local c3 = Drawing.new("Circle")
+    c3.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+    c3.Radius = radius
+    c3.Filled = true
+    c3.Color = color
+    c3.Transparency = 1
+    c3.NumSides = 32
+    c3.ZIndex = zindex or 1
+    table.insert(parts, c3)
+
+    local c4 = Drawing.new("Circle")
+    c4.Position = Vector2.new(pos.X + size.X - radius, pos.Y + size.Y - radius)
+    c4.Radius = radius
+    c4.Filled = true
+    c4.Color = color
+    c4.Transparency = 1
+    c4.NumSides = 32
+    c4.ZIndex = zindex or 1
+    table.insert(parts, c4)
+
+    local api = {}
+    function api:SetVisible(v)
+        for _, p in pairs(parts) do p.Visible = v end
     end
-    
-    return rect
+    function api:Destroy()
+        for _, p in pairs(parts) do p:Destroy() end
+        parts = {}
+    end
+    function api:SetColor(col)
+        for _, p in pairs(parts) do p.Color = col end
+    end
+    function api:SetPosition(newPos)
+        pos = newPos
+        sq.Position = Vector2.new(pos.X + radius, pos.Y + radius)
+        left.Position = Vector2.new(pos.X, pos.Y + radius)
+        right.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+        top.Position = Vector2.new(pos.X + radius, pos.Y)
+        bottom.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+        c1.Position = Vector2.new(pos.X + radius, pos.Y + radius)
+        c2.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+        c3.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+        c4.Position = Vector2.new(pos.X + size.X - radius, pos.Y + size.Y - radius)
+    end
+    function api:SetSize(newSize)
+        size = newSize
+        -- update squares/circles similarly
+        sq.Size = Vector2.new(math.max(0, size.X - radius * 2), math.max(0, size.Y - radius * 2))
+        left.Size = Vector2.new(radius, math.max(0, size.Y - radius * 2))
+        right.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+        right.Size = Vector2.new(radius, math.max(0, size.Y - radius * 2))
+        top.Size = Vector2.new(math.max(0, size.X - radius * 2), radius)
+        bottom.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+        bottom.Size = Vector2.new(math.max(0, size.X - radius * 2), radius)
+        c2.Position = Vector2.new(pos.X + size.X - radius, pos.Y + radius)
+        c3.Position = Vector2.new(pos.X + radius, pos.Y + size.Y - radius)
+        c4.Position = Vector2.new(pos.X + size.X - radius, pos.Y + size.Y - radius)
+    end
+
+    -- expose parts for fine control if needed
+    api._parts = parts
+    return api
 end
 
--- Function to create text
-local function createText(text, pos, size, font, color, center)
-    local txt = Drawing.new("Text")
-    txt.Text = text
-    txt.Position = pos
-    txt.Size = size
-    txt.Font = font or Drawing.Fonts.UI
-    txt.Color = color
-    txt.Center = center or false
-    txt.Outline = true
-    txt.OutlineColor = Color3.fromRGB(0, 0, 0)
-    txt.Visible = true
-    txt.Transparency = 1
-    table.insert(drawings, txt)
-    return txt
+-- Main layout
+local screenCenter = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
+local windowSize = Vector2.new(700, 420) -- tidak terlalu besar
+local windowPos = Vector2.new(screenCenter.X - windowSize.X/2, screenCenter.Y - windowSize.Y/2)
+local bgColor = Color3.fromRGB(30, 30, 35)
+local panelColor = Color3.fromRGB(40, 40, 45)
+local accent = Color3.fromRGB(88, 101, 242)
+
+local wnd = CreateRoundedRect(windowPos, windowSize, bgColor, 12, 2)
+wnd:SetVisible(true)
+
+-- left panel (menu)
+local leftPos = Vector2.new(windowPos.X + 18, windowPos.Y + 64)
+local leftSize = Vector2.new(180, windowSize.Y - 90)
+local leftPanel = CreateRoundedRect(leftPos, leftSize, panelColor, 8, 3)
+leftPanel:SetVisible(true)
+
+-- right panel (content)
+local rightPos = Vector2.new(windowPos.X + 210, windowPos.Y + 64)
+local rightSize = Vector2.new(windowSize.X - 228, windowSize.Y - 90)
+local rightPanel = CreateRoundedRect(rightPos, rightSize, panelColor, 8, 3)
+rightPanel:SetVisible(true)
+
+-- Title text centered top
+local title = Drawing.new("Text")
+title.Text = "Arkan Scripts"
+title.Font = Drawing.Fonts.Plex
+title.Size = 28
+title.Position = Vector2.new(screenCenter.X, windowPos.Y + 18)
+title.Center = true
+title.Outline = true
+title.OutlineColor = Color3.new(0,0,0)
+title.Color = Color3.fromRGB(235,235,235)
+title.Visible = true
+
+-- Minimize button (small circle top-right inside window)
+local minCircle = Drawing.new("Circle")
+minCircle.Radius = 12
+minCircle.Position = Vector2.new(windowPos.X + windowSize.X - 28, windowPos.Y + 24)
+minCircle.Filled = true
+minCircle.Color = accent
+minCircle.Transparency = 1
+minCircle.NumSides = 32
+minCircle.ZIndex = 5
+minCircle.Visible = true
+
+local minText = Drawing.new("Text")
+minText.Text = "-"
+minText.Font = Drawing.Fonts.Plex
+minText.Size = 18
+minText.Position = Vector2.new(minCircle.Position.X, minCircle.Position.Y - 8)
+minText.Center = true
+minText.Outline = true
+minText.OutlineColor = Color3.new(0,0,0)
+minText.Color = Color3.new(1,1,1)
+minText.Visible = true
+
+-- Minimized state circle with 'A' (hidden initially)
+local mini = Drawing.new("Circle")
+mini.Radius = 18
+mini.Position = Vector2.new(screenCenter.X, screenCenter.Y)
+mini.Filled = true
+mini.Color = accent
+mini.NumSides = 32
+mini.Visible = false
+mini.ZIndex = 10
+
+local miniText = Drawing.new("Text")
+miniText.Text = "A"
+miniText.Font = Drawing.Fonts.Plex
+miniText.Size = 20
+miniText.Position = Vector2.new(screenCenter.X, screenCenter.Y - 10)
+miniText.Center = true
+miniText.Outline = true
+miniText.OutlineColor = Color3.new(0,0,0)
+miniText.Color = Color3.new(1,1,1)
+miniText.Visible = false
+miniText.ZIndex = 11
+
+-- Menu items data
+local menus = {"Home", "Player", "Visuals", "Settings"}
+local menuTexts = {}
+local menuStartY = leftPos.Y + 12
+for i, name in ipairs(menus) do
+    local t = Drawing.new("Text")
+    t.Text = name
+    t.Font = Drawing.Fonts.Plex
+    t.Size = 20
+    t.Position = Vector2.new(leftPos.X + leftSize.X/2, menuStartY + (i-1)*36)
+    t.Center = true
+    t.Outline = true
+    t.OutlineColor = Color3.new(0,0,0)
+    t.Color = Color3.fromRGB(220,220,220)
+    t.Visible = true
+    t.ZIndex = 6
+    menuTexts[i] = {text = t, name = name, pos = Vector2.new(t.Position.X - 80, t.Position.Y - 12), size = Vector2.new(160, 28)}
 end
 
--- Function to create button (as square + text)
-local function createButton(text, pos, size, onClick)
-    local btn = {}
-    btn.bg = Drawing.new("Square")
-    btn.bg.Position = pos
-    btn.bg.Size = size
-    btn.bg.Color = accentColor
-    btn.bg.Filled = true
-    btn.bg.Visible = true
-    btn.bg.Transparency = 0.8
-    table.insert(drawings, btn.bg)
-    
-    btn.txt = createText(text, pos + Vector2.new(size.X / 2, size.Y / 2 - 10), 20, Drawing.Fonts.UI, textColor, true)
-    
-    btn.checkClick = function(mousePos)
-        if os.clock() - lastClickTime < 0.2 then return end  -- Debounce
-        local inBounds = mousePos.X >= pos.X and mousePos.X <= pos.X + size.X and
-                         mousePos.Y >= pos.Y and mousePos.Y <= pos.Y + size.Y
-        if inBounds and isLeftClickPressed() then
-            lastClickTime = os.clock()
-            onClick()
+-- Content area text (changes when menu clicked)
+local contentTitle = Drawing.new("Text")
+contentTitle.Text = "Home"
+contentTitle.Font = Drawing.Fonts.Plex
+contentTitle.Size = 22
+contentTitle.Position = Vector2.new(rightPos.X + 12, rightPos.Y + 10)
+contentTitle.Outline = true
+contentTitle.OutlineColor = Color3.new(0,0,0)
+contentTitle.Color = Color3.fromRGB(235,235,235)
+contentTitle.Visible = true
+contentTitle.ZIndex = 6
+
+local contentBody = {}
+for i=1,6 do
+    local t = Drawing.new("Text")
+    t.Text = ""
+    t.Font = Drawing.Fonts.Plex
+    t.Size = 18
+    t.Position = Vector2.new(rightPos.X + 20, rightPos.Y + 40 + (i-1)*28)
+    t.Outline = true
+    t.OutlineColor = Color3.new(0,0,0)
+    t.Color = Color3.fromRGB(200,200,200)
+    t.Visible = true
+    t.ZIndex = 6
+    table.insert(contentBody, t)
+end
+
+local function updateContent(menuName)
+    contentTitle.Text = menuName
+    -- contoh isi setiap menu
+    local items = {}
+    if menuName == "Home" then
+        items = {"Welcome to Arkan Scripts","Version: 1.0","Click left menu to explore"}
+    elseif menuName == "Player" then
+        items = {"Speed: Toggle","JumpBoost: Toggle","Invisibility: Toggle"}
+    elseif menuName == "Visuals" then
+        items = {"ESP: Toggle","Chams: Toggle","Tracer: Toggle"}
+    elseif menuName == "Settings" then
+        items = {"UI Theme","Keybinds","About"}
+    end
+    for i, t in ipairs(contentBody) do
+        t.Text = items[i] or ""
+    end
+end
+
+updateContent("Home")
+
+-- Utility: check if a 2D point inside rectangle defined by pos & size
+local function pointInRect(p, rectPos, rectSize)
+    return p.X >= rectPos.X and p.X <= rectPos.X + rectSize.X and p.Y >= rectPos.Y and p.Y <= rectPos.Y + rectSize.Y
+end
+
+-- Click handling
+local minimized = false
+
+local function toggleMinimize()
+    if minimized then
+        -- restore: hide mini and show full
+        mini.Visible = false
+        miniText.Visible = false
+        wnd:SetVisible(true)
+        leftPanel:SetVisible(true)
+        rightPanel:SetVisible(true)
+        title.Visible = true
+        minCircle.Visible = true
+        minText.Visible = true
+        for _, v in ipairs(menuTexts) do v.text.Visible = true end
+        contentTitle.Visible = true
+        for _, v in ipairs(contentBody) do v.Visible = true end
+        minimized = false
+    else
+        -- minimize: hide full, show small circle with A
+        wnd:SetVisible(false)
+        leftPanel:SetVisible(false)
+        rightPanel:SetVisible(false)
+        title.Visible = false
+        minCircle.Visible = false
+        minText.Visible = false
+        for _, v in ipairs(menuTexts) do v.text.Visible = false end
+        contentTitle.Visible = false
+        for _, v in ipairs(contentBody) do v.Visible = false end
+        mini.Visible = true
+        miniText.Visible = true
+        minimized = true
+    end
+end
+
+-- Input: left-click
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mPos = Vector2.new(mouse.X, mouse.Y)
+        -- check minimize button
+        if pointInRect(mPos, Vector2.new(minCircle.Position.X - minCircle.Radius, minCircle.Position.Y - minCircle.Radius), Vector2.new(minCircle.Radius*2, minCircle.Radius*2)) and minCircle.Visible then
+            toggleMinimize()
+            return
         end
-    end
-    
-    return btn
-end
-
--- Render GUI when not minimized
-local function renderGUI()
-    -- Clear existing drawings
-    for _, d in ipairs(drawings) do
-        d:Destroy()
-    end
-    drawings = {}
-    
-    -- BG rounded rect
-    createRoundedRect(guiPos, Vector2.new(guiWidth, guiHeight), bgColor, true)
-    
-    -- Title
-    createText("Arkan Scripts", guiPos + Vector2.new(guiWidth / 2, 10), 24, Drawing.Fonts.Plex, textColor, true)
-    
-    -- Minimize button (small square at top right)
-    local minBtn = createButton("-", guiPos + Vector2.new(guiWidth - 30, 10), Vector2.new(20, 20), function()
-        isMinimized = true
-        renderMinimized()
-    end)
-    
-    -- Left sidebar: Menu list (2 examples)
-    local menuItems = {"Menu1", "Menu2"}
-    local menuBtns = {}
-    for i, menu in ipairs(menuItems) do
-        local btnPos = guiPos + Vector2.new(10, 50 + (i-1)*40)
-        menuBtns[i] = createButton(menu, btnPos, Vector2.new(120, 30), function()
-            selectedMenu = i
-            renderContent()  -- Refresh right content
-        end)
-    end
-    
-    -- Right content area
-    local contentPos = guiPos + Vector2.new(140, 50)
-    local function renderContent()
-        -- Clear old content texts
-        if contentTexts then
-            for _, t in ipairs(contentTexts) do
-                t:Destroy()
+        -- if minimized, check mini circle click
+        if minimized and mini.Visible then
+            if (mPos - mini.Position).Magnitude <= mini.Radius then
+                toggleMinimize()
+            end
+            return
+        end
+        -- check menu items
+        for i, entry in ipairs(menuTexts) do
+            if entry.text.Visible and pointInRect(mPos, entry.pos, entry.size) then
+                -- highlight selected
+                for _, e in ipairs(menuTexts) do e.text.Color = Color3.fromRGB(220,220,220) end
+                entry.text.Color = accent
+                updateContent(entry.name)
+                return
             end
         end
-        contentTexts = {}
-        
-        -- Example features based on selected menu
-        local features = selectedMenu == 1 and {"Feature A", "Feature B", "Feature C"} or {"Feature X", "Feature Y"}
-        for i, feat in ipairs(features) do
-            local txt = createText(feat, contentPos + Vector2.new(0, (i-1)*30), 18, Drawing.Fonts.System, textColor, false)
-            table.insert(contentTexts, txt)
-        end
-    end
-    renderContent()
-    
-    -- Separator line between left and right
-    local sep = Drawing.new("Line")
-    sep.From = guiPos + Vector2.new(140, 40)
-    sep.To = guiPos + Vector2.new(140, guiHeight - 10)
-    sep.Color = accentColor
-    sep.Thickness = 2
-    sep.Visible = true
-    table.insert(drawings, sep)
-end
-
--- Render minimized state (circle with 'A')
-local function renderMinimized()
-    -- Clear drawings
-    for _, d in ipairs(drawings) do
-        d:Destroy()
-    end
-    drawings = {}
-    
-    -- Circle
-    local minCircle = Drawing.new("Circle")
-    minCircle.Position = screenSize / 2
-    minCircle.Radius = 30
-    minCircle.NumSides = 64
-    minCircle.Color = accentColor
-    minCircle.Filled = true
-    minCircle.Visible = true
-    minCircle.Transparency = 0.9
-    table.insert(drawings, minCircle)
-    
-    -- Text 'A'
-    createText("A", screenSize / 2 - Vector2.new(10, 15), 30, Drawing.Fonts.Monospaced, textColor, false)
-    
-    -- Check click to restore
-    minCheck = function(mousePos)
-        local center = screenSize / 2
-        local dist = (mousePos - center).Magnitude
-        if dist <= 30 and isLeftClickPressed() and os.clock() - lastClickTime > 0.2 then
-            lastClickTime = os.clock()
-            isMinimized = false
-            renderGUI()
-        end
-    end
-end
-
--- Initial render
-if not isMinimized then
-    renderGUI()
-end
-
--- Main loop for input (run in background)
-task.spawn(function()
-    while true do
-        local mousePos = getMousePos()
-        
-        if isMinimized then
-            minCheck(mousePos)
-        else
-            -- Check menu buttons
-            for _, btn in ipairs(menuBtns) do
-                btn.checkClick(mousePos)
-            end
-            -- Check minimize button
-            minBtn.checkClick(mousePos)
-        end
-        
-        task.wait(0.05)  -- Low CPU usage
     end
 end)
 
--- Cleanup on script end (optional)
--- cleardrawcache()
+-- Make UI follow camera resize
+local function repositionCenter()
+    screenCenter = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2)
+    windowPos = Vector2.new(screenCenter.X - windowSize.X/2, screenCenter.Y - windowSize.Y/2)
+    wnd:SetPosition(windowPos)
+    leftPos = Vector2.new(windowPos.X + 18, windowPos.Y + 64)
+    rightPos = Vector2.new(windowPos.X + 210, windowPos.Y + 64)
+    leftPanel:SetPosition(leftPos)
+    rightPanel:SetPosition(rightPos)
+    title.Position = Vector2.new(screenCenter.X, windowPos.Y + 18)
+    minCircle.Position = Vector2.new(windowPos.X + windowSize.X - 28, windowPos.Y + 24)
+    minText.Position = Vector2.new(minCircle.Position.X, minCircle.Position.Y - 8)
+    mini.Position = Vector2.new(screenCenter.X, screenCenter.Y)
+    miniText.Position = Vector2.new(screenCenter.X, screenCenter.Y - 10)
+    -- update menu texts positions
+    for i, entry in ipairs(menuTexts) do
+        entry.text.Position = Vector2.new(leftPos.X + leftSize.X/2, menuStartY + (i-1)*36)
+        entry.pos = Vector2.new(entry.text.Position.X - 80, entry.text.Position.Y - 12)
+    end
+    contentTitle.Position = Vector2.new(rightPos.X + 12, rightPos.Y + 10)
+    for i, t in ipairs(contentBody) do
+        t.Position = Vector2.new(rightPos.X + 20, rightPos.Y + 40 + (i-1)*28)
+    end
+end
+
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    repositionCenter()
+end)
+
+-- Initial select first menu
+menuTexts[1].text.Color = accent
+
+-- Keep references to avoid GC
+local _refs = {wnd=wnd, left=leftPanel, right=rightPanel, title=title, minCircle=minCircle, minText=minText, mini=mini, miniText=miniText, menus=menuTexts, contentTitle=contentTitle, contentBody=contentBody}
+
+-- Done
+print("Arkan Scripts GUI loaded")
