@@ -1,318 +1,341 @@
--- Arkan Scripts GUI Menu Manager
--- Menggunakan Drawing API untuk Delta Exploit
--- Center screen dengan rounded corners
+-- Arkan Scripts GUI dengan Drawing API
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
+-- Konfigurasi
+local screenSize = workspace.CurrentCamera.ViewportSize
+local guiWidth = 500
+local guiHeight = 350
+local guiX = (screenSize.X - guiWidth) / 2
+local guiY = (screenSize.Y - guiHeight) / 2
+local cornerRadius = 12
+local menuWidth = 150
+
+-- State
+local isMinimized = false
+local currentMenu = "Home"
 local drawings = {}
-local menuData = {
-    {name = "Player", features = {"Speed Boost", "Jump Power", "Fly Mode", "Noclip"}},
-    {name = "Combat", features = {"Aimbot", "ESP", "Silent Aim", "Hitbox Expander"}},
-    {name = "Visual", features = {"Fullbright", "No Fog", "Tracers", "Chams"}},
-    {name = "Misc", features = {"Auto Farm", "Teleport", "Infinite Jump", "Anti AFK"}},
+local menuButtons = {}
+
+-- Warna
+local colors = {
+    background = Color3.fromRGB(25, 25, 30),
+    sidebar = Color3.fromRGB(20, 20, 25),
+    accent = Color3.fromRGB(100, 100, 255),
+    text = Color3.fromRGB(240, 240, 240),
+    textDim = Color3.fromRGB(160, 160, 160),
+    border = Color3.fromRGB(50, 50, 60),
 }
 
-local selectedMenu = 1
-local camera = workspace.CurrentCamera
-local menuSize = Vector2.new(800, 600)
-local isMinimized = false
-local minimizedSize = 60 -- Diameter circle saat minimized
+-- Menu items
+local menus = {
+    {name = "Home", icon = "H"},
+    {name = "Player", icon = "P"},
+    {name = "Combat", icon = "C"},
+    {name = "Visual", icon = "V"},
+    {name = "Settings", icon = "S"},
+}
 
--- Fungsi untuk mendapatkan posisi center
-local function getCenterPosition()
-    local viewportSize = camera.ViewportSize
-    return Vector2.new(
-        (viewportSize.X - menuSize.X) / 2,
-        (viewportSize.Y - menuSize.Y) / 2
-    )
-end
-
-local menuPos = getCenterPosition()
-
--- Fungsi helper untuk membuat drawing
-local function createDrawing(type, properties)
-    local d = Drawing.new(type)
-    for prop, val in pairs(properties) do
-        d[prop] = val
-    end
-    table.insert(drawings, d)
-    return d
-end
-
--- Fungsi untuk membuat rounded rectangle dengan triangle
-local function createRoundedRect(pos, size, color, filled, radius, transparency, zIndex)
-    radius = radius or 10
+-- Fungsi helper untuk membuat rounded rectangle
+local function createRoundedRect(x, y, w, h, radius, color, filled, transparency)
+    local rects = {}
     
-    -- Main rectangle (center)
-    local mainRect = createDrawing("Square", {
-        Size = Vector2.new(size.X - radius * 2, size.Y),
-        Position = Vector2.new(pos.X + radius, pos.Y),
-        Color = color,
-        Filled = filled,
-        Transparency = transparency,
-        Visible = true,
-        ZIndex = zIndex
-    })
+    -- Main body
+    local main = Drawing.new("Square")
+    main.Position = Vector2.new(x + radius, y)
+    main.Size = Vector2.new(w - radius * 2, h)
+    main.Color = color
+    main.Filled = filled
+    main.Transparency = transparency or 1
+    main.Visible = true
+    table.insert(rects, main)
     
-    -- Top and bottom strips
-    local topRect = createDrawing("Square", {
-        Size = Vector2.new(size.X, size.Y - radius * 2),
-        Position = Vector2.new(pos.X, pos.Y + radius),
-        Color = color,
-        Filled = filled,
-        Transparency = transparency,
-        Visible = true,
-        ZIndex = zIndex
-    })
+    -- Left side
+    local left = Drawing.new("Square")
+    left.Position = Vector2.new(x, y + radius)
+    left.Size = Vector2.new(radius, h - radius * 2)
+    left.Color = color
+    left.Filled = filled
+    left.Transparency = transparency or 1
+    left.Visible = true
+    table.insert(rects, left)
     
-    -- Corners (using circles for smooth rounded effect)
+    -- Right side
+    local right = Drawing.new("Square")
+    right.Position = Vector2.new(x + w - radius, y + radius)
+    right.Size = Vector2.new(radius, h - radius * 2)
+    right.Color = color
+    right.Filled = filled
+    right.Transparency = transparency or 1
+    right.Visible = true
+    table.insert(rects, right)
+    
+    -- Corners (circles)
     local corners = {
-        {x = pos.X + radius, y = pos.Y + radius}, -- Top-left
-        {x = pos.X + size.X - radius, y = pos.Y + radius}, -- Top-right
-        {x = pos.X + radius, y = pos.Y + size.Y - radius}, -- Bottom-left
-        {x = pos.X + size.X - radius, y = pos.Y + size.Y - radius}, -- Bottom-right
+        {x + radius, y + radius},
+        {x + w - radius, y + radius},
+        {x + radius, y + h - radius},
+        {x + w - radius, y + h - radius},
     }
     
-    for _, corner in ipairs(corners) do
-        createDrawing("Circle", {
-            Position = Vector2.new(corner.x, corner.y),
-            Radius = radius,
-            Color = color,
-            Filled = filled,
-            NumSides = 32,
-            Transparency = transparency,
-            Visible = true,
-            ZIndex = zIndex
-        })
+    for _, pos in ipairs(corners) do
+        local circle = Drawing.new("Circle")
+        circle.Position = Vector2.new(pos[1], pos[2])
+        circle.Radius = radius
+        circle.Color = color
+        circle.Filled = filled
+        circle.NumSides = 16
+        circle.Transparency = transparency or 1
+        circle.Visible = true
+        table.insert(rects, circle)
     end
+    
+    return rects
 end
 
--- Fungsi untuk membersihkan semua drawing
-local function clearAllDrawings()
-    for _, d in ipairs(drawings) do
-        d:Destroy()
+-- Fungsi untuk membersihkan drawings
+local function clearDrawings()
+    for _, drawing in ipairs(drawings) do
+        if type(drawing) == "table" then
+            for _, d in ipairs(drawing) do
+                d:Destroy()
+            end
+        else
+            drawing:Destroy()
+        end
     end
     drawings = {}
+    menuButtons = {}
 end
 
--- Fungsi untuk render GUI
-local function renderGUI()
-    clearAllDrawings()
-    menuPos = getCenterPosition()
+-- Fungsi untuk membuat GUI minimized
+local function createMinimizedGUI()
+    clearDrawings()
     
-    -- Background utama dengan rounded corners
-    createRoundedRect(menuPos, menuSize, Color3.fromRGB(25, 25, 35), true, 15, 0.95, 1)
+    local minSize = 60
+    local minX = (screenSize.X - minSize) / 2
+    local minY = (screenSize.Y - minSize) / 2
     
-    -- Border utama dengan rounded corners
-    createRoundedRect(menuPos, menuSize, Color3.fromRGB(100, 100, 255), false, 15, 1, 2)
+    -- Background circle
+    local bg = Drawing.new("Circle")
+    bg.Position = Vector2.new(minX + minSize/2, minY + minSize/2)
+    bg.Radius = minSize / 2
+    bg.Color = colors.background
+    bg.Filled = true
+    bg.NumSides = 32
+    bg.Transparency = 0.95
+    bg.Visible = true
+    table.insert(drawings, bg)
     
-    -- Header background dengan rounded top corners
-    local headerHeight = 50
-    createRoundedRect(menuPos, Vector2.new(menuSize.X, headerHeight), Color3.fromRGB(35, 35, 50), true, 15, 1, 2)
+    -- Border circle
+    local border = Drawing.new("Circle")
+    border.Position = Vector2.new(minX + minSize/2, minY + minSize/2)
+    border.Radius = minSize / 2
+    border.Color = colors.accent
+    border.Filled = false
+    border.NumSides = 32
+    border.Thickness = 2
+    border.Transparency = 0.8
+    border.Visible = true
+    table.insert(drawings, border)
     
-    -- Cover bagian bawah header agar tidak rounded
-    local headerCover = createDrawing("Square", {
-        Size = Vector2.new(menuSize.X - 30, 15),
-        Position = Vector2.new(menuPos.X + 15, menuPos.Y + headerHeight - 15),
-        Color = Color3.fromRGB(35, 35, 50),
-        Filled = true,
-        Transparency = 1,
-        Visible = true,
-        ZIndex = 2
-    })
+    -- Text "A"
+    local text = Drawing.new("Text")
+    text.Text = "A"
+    text.Size = 28
+    text.Font = Drawing.Fonts.Plex
+    text.Color = colors.accent
+    text.Position = Vector2.new(minX + minSize/2 - 8, minY + minSize/2 - 14)
+    text.Transparency = 1
+    text.Visible = true
+    table.insert(drawings, text)
     
-    -- Title text
-    local titleText = createDrawing("Text", {
-        Text = "Arkan Scripts",
-        Font = Drawing.Fonts.Plex,
-        Size = 24,
-        Position = Vector2.new(menuPos.X + 30, menuPos.Y + 15),
-        Color = Color3.fromRGB(100, 150, 255),
-        Transparency = 1,
-        Visible = true,
-        ZIndex = 3
-    })
-    
-    -- Divider horizontal setelah header
-    local dividerHeader = createDrawing("Line", {
-        From = Vector2.new(menuPos.X + 15, menuPos.Y + headerHeight),
-        To = Vector2.new(menuPos.X + menuSize.X - 15, menuPos.Y + headerHeight),
-        Color = Color3.fromRGB(100, 100, 255),
-        Thickness = 2,
-        Transparency = 1,
-        Visible = true,
-        ZIndex = 2
-    })
-    
-    -- Panel kiri (Menu List) - 30% lebar
-    local leftPanelWidth = menuSize.X * 0.3
-    local contentHeight = menuSize.Y - headerHeight
-    
-    -- Divider vertikal antara panel kiri dan kanan
-    local dividerVertical = createDrawing("Line", {
-        From = Vector2.new(menuPos.X + leftPanelWidth, menuPos.Y + headerHeight),
-        To = Vector2.new(menuPos.X + leftPanelWidth, menuPos.Y + menuSize.Y - 15),
-        Color = Color3.fromRGB(100, 100, 255),
-        Thickness = 2,
-        Transparency = 1,
-        Visible = true,
-        ZIndex = 2
-    })
-    
-    -- Render menu items di panel kiri
-    local menuItemHeight = 50
-    for i, menu in ipairs(menuData) do
-        local yPos = menuPos.Y + headerHeight + (i - 1) * menuItemHeight
-        
-        -- Background menu item (highlight jika selected) dengan rounded
-        if i == selectedMenu then
-            createRoundedRect(
-                Vector2.new(menuPos.X + 8, yPos + 5),
-                Vector2.new(leftPanelWidth - 16, menuItemHeight - 10),
-                Color3.fromRGB(60, 60, 120),
-                true,
-                8,
-                0.8,
-                3
-            )
+    -- Hit area untuk click
+    menuButtons.minimize = {
+        x = minX, y = minY,
+        w = minSize, h = minSize,
+        action = function()
+            isMinimized = false
+            createMainGUI()
         end
+    }
+end
+
+-- Fungsi untuk membuat GUI utama
+function createMainGUI()
+    clearDrawings()
+    
+    -- Background utama
+    local mainBg = createRoundedRect(guiX, guiY, guiWidth, guiHeight, cornerRadius, colors.background, true, 0.95)
+    for _, d in ipairs(mainBg) do table.insert(drawings, d) end
+    
+    -- Header
+    local headerH = 45
+    local header = createRoundedRect(guiX, guiY, guiWidth, headerH, cornerRadius, colors.accent, true, 0.3)
+    for _, d in ipairs(header) do table.insert(drawings, d) end
+    
+    -- Title
+    local title = Drawing.new("Text")
+    title.Text = "Arkan Scripts"
+    title.Size = 20
+    title.Font = Drawing.Fonts.Plex
+    title.Color = colors.text
+    title.Position = Vector2.new(guiX + 20, guiY + 12)
+    title.Transparency = 1
+    title.Visible = true
+    table.insert(drawings, title)
+    
+    -- Minimize button
+    local minBtn = Drawing.new("Circle")
+    minBtn.Position = Vector2.new(guiX + guiWidth - 30, guiY + headerH/2)
+    minBtn.Radius = 8
+    minBtn.Color = colors.accent
+    minBtn.Filled = true
+    minBtn.NumSides = 16
+    minBtn.Transparency = 0.8
+    minBtn.Visible = true
+    table.insert(drawings, minBtn)
+    
+    menuButtons.minimize = {
+        x = guiX + guiWidth - 40,
+        y = guiY + 5,
+        w = 30, h = 30,
+        action = function()
+            isMinimized = true
+            createMinimizedGUI()
+        end
+    }
+    
+    -- Sidebar
+    local sidebarX = guiX
+    local sidebarY = guiY + headerH
+    local sidebar = createRoundedRect(sidebarX, sidebarY, menuWidth, guiHeight - headerH, cornerRadius, colors.sidebar, true, 0.9)
+    for _, d in ipairs(sidebar) do table.insert(drawings, d) end
+    
+    -- Menu items
+    local menuY = sidebarY + 15
+    for i, menu in ipairs(menus) do
+        local itemH = 40
+        local itemY = menuY + (i - 1) * (itemH + 8)
+        
+        -- Menu background (highlight if selected)
+        if menu.name == currentMenu then
+            local highlight = createRoundedRect(sidebarX + 8, itemY, menuWidth - 16, itemH, 6, colors.accent, true, 0.3)
+            for _, d in ipairs(highlight) do table.insert(drawings, d) end
+        end
+        
+        -- Menu icon
+        local icon = Drawing.new("Text")
+        icon.Text = menu.icon
+        icon.Size = 18
+        icon.Font = Drawing.Fonts.Plex
+        icon.Color = menu.name == currentMenu and colors.accent or colors.textDim
+        icon.Position = Vector2.new(sidebarX + 20, itemY + 10)
+        icon.Transparency = 1
+        icon.Visible = true
+        table.insert(drawings, icon)
         
         -- Menu text
-        local menuText = createDrawing("Text", {
-            Text = menu.name,
-            Font = Drawing.Fonts.UI,
-            Size = 18,
-            Position = Vector2.new(menuPos.X + 25, yPos + 17),
-            Color = i == selectedMenu and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180),
-            Transparency = 1,
-            Visible = true,
-            ZIndex = 4
-        })
+        local text = Drawing.new("Text")
+        text.Text = menu.name
+        text.Size = 16
+        text.Font = Drawing.Fonts.UI
+        text.Color = menu.name == currentMenu and colors.text or colors.textDim
+        text.Position = Vector2.new(sidebarX + 45, itemY + 11)
+        text.Transparency = 1
+        text.Visible = true
+        table.insert(drawings, text)
         
-        -- Divider antara menu items
-        if i < #menuData then
-            local menuDivider = createDrawing("Line", {
-                From = Vector2.new(menuPos.X + 15, yPos + menuItemHeight),
-                To = Vector2.new(menuPos.X + leftPanelWidth - 15, yPos + menuItemHeight),
-                Color = Color3.fromRGB(50, 50, 60),
-                Thickness = 1,
-                Transparency = 0.5,
-                Visible = true,
-                ZIndex = 3
-            })
-        end
-    end
-    
-    -- Panel kanan (Features) - 70% lebar
-    local rightPanelX = menuPos.X + leftPanelWidth
-    local rightPanelWidth = menuSize.X - leftPanelWidth
-    
-    -- Header panel kanan
-    local rightHeaderText = createDrawing("Text", {
-        Text = menuData[selectedMenu].name .. " Features",
-        Font = Drawing.Fonts.Plex,
-        Size = 20,
-        Position = Vector2.new(rightPanelX + 25, menuPos.Y + headerHeight + 20),
-        Color = Color3.fromRGB(200, 200, 255),
-        Transparency = 1,
-        Visible = true,
-        ZIndex = 3
-    })
-    
-    -- Render features
-    local featureStartY = menuPos.Y + headerHeight + 60
-    local featureSpacing = 45
-    for i, feature in ipairs(menuData[selectedMenu].features) do
-        local yPos = featureStartY + (i - 1) * featureSpacing
-        
-        -- Feature checkbox background dengan rounded corners
-        createRoundedRect(
-            Vector2.new(rightPanelX + 25, yPos),
-            Vector2.new(20, 20),
-            Color3.fromRGB(50, 50, 60),
-            true,
-            4,
-            1,
-            3
-        )
-        
-        -- Feature checkbox border dengan rounded corners
-        createRoundedRect(
-            Vector2.new(rightPanelX + 25, yPos),
-            Vector2.new(20, 20),
-            Color3.fromRGB(100, 100, 150),
-            false,
-            4,
-            1,
-            4
-        )
-        
-        -- Feature text
-        local featureText = createDrawing("Text", {
-            Text = feature,
-            Font = Drawing.Fonts.UI,
-            Size = 16,
-            Position = Vector2.new(rightPanelX + 55, yPos + 2),
-            Color = Color3.fromRGB(220, 220, 220),
-            Transparency = 1,
-            Visible = true,
-            ZIndex = 3
-        })
-    end
-    
-    -- Info text di bawah
-    local infoText = createDrawing("Text", {
-        Text = "Klik menu di kiri untuk melihat fitur | Press DEL untuk close",
-        Font = Drawing.Fonts.Monospace,
-        Size = 12,
-        Position = Vector2.new(menuPos.X + 25, menuPos.Y + menuSize.Y - 25),
-        Color = Color3.fromRGB(150, 150, 150),
-        Transparency = 0.7,
-        Visible = true,
-        ZIndex = 3
-    })
-end
-
--- Input handling
-local function handleInput()
-    local mouse = game:GetService("Players").LocalPlayer:GetMouse()
-    
-    mouse.Button1Down:Connect(function()
-        local mousePos = Vector2.new(mouse.X, mouse.Y)
-        local leftPanelWidth = menuSize.X * 0.3
-        local menuItemHeight = 50
-        local headerHeight = 50
-        
-        -- Check jika klik di area menu kiri
-        if mousePos.X >= menuPos.X and mousePos.X <= menuPos.X + leftPanelWidth then
-            if mousePos.Y >= menuPos.Y + headerHeight and mousePos.Y <= menuPos.Y + menuSize.Y then
-                local clickedIndex = math.floor((mousePos.Y - (menuPos.Y + headerHeight)) / menuItemHeight) + 1
-                if clickedIndex >= 1 and clickedIndex <= #menuData then
-                    selectedMenu = clickedIndex
-                    renderGUI()
-                end
+        -- Hit area
+        menuButtons[menu.name] = {
+            x = sidebarX + 8,
+            y = itemY,
+            w = menuWidth - 16,
+            h = itemH,
+            action = function()
+                currentMenu = menu.name
+                createMainGUI()
             end
+        }
+    end
+    
+    -- Content area
+    local contentX = guiX + menuWidth + 20
+    local contentY = sidebarY + 20
+    local contentW = guiWidth - menuWidth - 40
+    
+    -- Content title
+    local contentTitle = Drawing.new("Text")
+    contentTitle.Text = currentMenu .. " Menu"
+    contentTitle.Size = 18
+    contentTitle.Font = Drawing.Fonts.Plex
+    contentTitle.Color = colors.accent
+    contentTitle.Position = Vector2.new(contentX, contentY)
+    contentTitle.Transparency = 1
+    contentTitle.Visible = true
+    table.insert(drawings, contentTitle)
+    
+    -- Content description
+    local desc = Drawing.new("Text")
+    desc.Text = "Features for " .. currentMenu
+    desc.Size = 14
+    desc.Font = Drawing.Fonts.UI
+    desc.Color = colors.textDim
+    desc.Position = Vector2.new(contentX, contentY + 30)
+    desc.Transparency = 1
+    desc.Visible = true
+    table.insert(drawings, desc)
+    
+    -- Sample features
+    for i = 1, 4 do
+        local featureY = contentY + 60 + (i - 1) * 35
+        
+        local checkbox = Drawing.new("Square")
+        checkbox.Position = Vector2.new(contentX, featureY)
+        checkbox.Size = Vector2.new(18, 18)
+        checkbox.Color = colors.border
+        checkbox.Filled = false
+        checkbox.Thickness = 2
+        checkbox.Transparency = 0.8
+        checkbox.Visible = true
+        table.insert(drawings, checkbox)
+        
+        local feature = Drawing.new("Text")
+        feature.Text = "Feature " .. i
+        feature.Size = 14
+        feature.Font = Drawing.Fonts.UI
+        feature.Color = colors.text
+        feature.Position = Vector2.new(contentX + 28, featureY + 2)
+        feature.Transparency = 1
+        feature.Visible = true
+        table.insert(drawings, feature)
+    end
+end
+
+-- Fungsi untuk handle click
+local function handleClick(x, y)
+    for name, btn in pairs(menuButtons) do
+        if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
+            btn.action()
+            break
         end
-    end)
+    end
 end
 
--- Update posisi saat viewport berubah
-camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-    renderGUI()
-end)
-
--- Inisialisasi GUI
-renderGUI()
-handleInput()
-
--- Fungsi untuk menutup GUI
-local function closeGUI()
-    clearAllDrawings()
-end
-
--- Keyboard handler untuk close
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    if input.KeyCode == Enum.KeyCode.Delete then
-        closeGUI()
+-- Event listener
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local mousePos = UserInputService:GetMouseLocation()
+        handleClick(mousePos.X, mousePos.Y - 36) -- Offset untuk topbar Roblox
     end
 end)
 
-print("Arkan Scripts GUI loaded! Press DELETE to close.")
+-- Initialize
+createMainGUI()
+
+-- Cleanup saat script dihentikan
+local function cleanup()
+    clearDrawings()
+end
+
+game:GetService("Players").LocalPlayer.CharacterAdded:Connect(cleanup)
