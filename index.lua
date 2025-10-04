@@ -1,275 +1,580 @@
--- Raw 1x1 white PNG data for Image objects
-local pixel = string.char(137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 144, 119, 83, 222, 0, 0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 248, 255, 255, 63, 0, 5, 254, 2, 254, 137, 28, 73, 10, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130)
+-- Modern GUI Menu System for DeltaExploit
+-- Created with smooth interactions and professional design
 
--- Services
-local UIS = game:GetService("UserInputService")
-local RS = game:GetService("RunService")
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local mouse = player:GetMouse()
-local camera = workspace.CurrentCamera
-local screenSize = camera.ViewportSize
+local GUI = {}
 
--- GUI Configuration
-local windowSize = Vector2.new(400, 300)
-local windowPos = (screenSize - windowSize) / 2
-local headerHeight = 40
-local leftWidth = 150
-local rounding = 10
-local btnRounding = 5
-local normalColor = Color3.fromRGB(50, 50, 50)
-local hoverColor = Color3.fromRGB(70, 70, 70)
-local selectedColor = Color3.fromRGB(0, 120, 200)
-local textColor = Color3.new(1, 1, 1)
-local bgColor = Color3.fromRGB(30, 30, 30)
-local shadowColor = Color3.new(0, 0, 0)
-local shadowOffset = Vector2.new(5, 5)
-local shadowTransparency = 0.3
-
--- Menu Structure
-local menus = {"Combat", "Player", "World", "Teleport", "Settings"}
-local features = {
-    Combat = {"Auto Farm", "Kill Aura", "ESP"},
-    Player = {"Speed", "Jump Power", "God Mode"},
-    World = {"No Clip", "Day/Night Cycle", "Infinite Resources"},
-    Teleport = {"TP to Player", "TP to Location", "Safe TP"},
-    Settings = {"Theme", "Keybinds", "Credits"}
+-- Mouse position tracking
+local mouse = {
+    X = 0,
+    Y = 0,
+    Pressed = false,
+    Released = false
 }
 
--- State
-local selected = 1
-local minimized = false
-local dragging = false
-local dragStart = nil
-local startPos = nil
+-- GUI State
+local GUIState = {
+    Minimized = false,
+    Dragging = false,
+    DragOffset = Vector2.new(0, 0),
+    SelectedMenu = "Combat",
+    MouseDown = false,
+    LastClickTime = 0
+}
 
--- Drawing Objects
-local shadow = Drawing.new("Image")
-shadow.Data = pixel
-shadow.Size = windowSize + shadowOffset * 2
-shadow.Position = windowPos + shadowOffset
-shadow.Rounding = rounding
-shadow.Color = shadowColor
-shadow.Transparency = shadowTransparency
-shadow.ZIndex = 0
-shadow.Visible = true
+-- Menu structure data
+local MenuData = {
+    Combat = {
+        {"Auto Farm", false},
+        {"Kill Aura", false},
+        {"Trigger Bot", false},
+        {"Hit Box Expand", false},
+        {"Silent Aim", false}
+    },
+    Player = {
+        {"Speed Hack", false},
+        {"Jump Power", false},
+        {"No Clip", false},
+        {"Fly", false},
+        {"Infinite Jump", false}
+    },
+    World = {
+        {"No Fog", false},
+        {"Full Bright", false},
+        {"Time Changer", false},
+        {"Gravity", false},
+        {"Destroy Map", false}
+    },
+    Teleport = {
+        {"Teleport to Player", false},
+        {"Save Location", false},
+        {"Load Location", false},
+        {"Teleport to Base", false},
+        {"Auto Teleport", false}
+    },
+    Settings = {
+        {"UI Theme", false},
+        {"Keybinds", false},
+        {"Configs", false},
+        {"Notifications", false},
+        {"Save Settings", false}
+    }
+}
 
-local bg = Drawing.new("Image")
-bg.Data = pixel
-bg.Size = windowSize
-bg.Position = windowPos
-bg.Rounding = rounding
-bg.Color = bgColor
-bg.Transparency = 1
-bg.ZIndex = 1
-bg.Visible = true
+-- GUI Drawing Objects
+local DrawingObjects = {
+    Window = {
+        Background = nil,
+        Header = nil,
+        HeaderText = nil,
+        MinimizeButton = nil,
+        MinimizeButtonText = nil
+    },
+    LeftPanel = {
+        Background = nil,
+        MenuItems = {}
+    },
+    RightPanel = {
+        Background = nil,
+        ContentItems = {},
+        SectionHeaders = {}
+    },
+    Minimized = {
+        Circle = nil,
+        Text = nil
+    }
+}
 
-local header = Drawing.new("Text")
-header.Text = "Arkan Scripts"
-header.Size = 24
-header.Font = Drawing.Fonts.UI
-header.Color = textColor
-header.Center = true
-header.ZIndex = 2
-header.Visible = true
-header.Position = windowPos + Vector2.new(windowSize.X / 2, 10)
+-- Color Scheme
+local Colors = {
+    Background = Color3.fromRGB(28, 28, 36),
+    Header = Color3.fromRGB(45, 45, 55),
+    Primary = Color3.fromRGB(0, 150, 255),
+    PrimaryHover = Color3.fromRGB(0, 170, 255),
+    Secondary = Color3.fromRGB(60, 60, 75),
+    SecondaryHover = Color3.fromRGB(70, 70, 85),
+    Text = Color3.fromRGB(240, 240, 240),
+    TextMuted = Color3.fromRGB(180, 180, 190),
+    Accent = Color3.fromRGB(255, 65, 105)
+}
 
-local minBtn = Drawing.new("Circle")
-minBtn.Radius = 10
-minBtn.NumSides = 32
-minBtn.Filled = true
-minBtn.Color = Color3.fromRGB(200, 0, 0)
-minBtn.Transparency = 1
-minBtn.ZIndex = 2
-minBtn.Visible = true
-minBtn.Position = windowPos + Vector2.new(windowSize.X - 20, 20)
+-- Initialize GUI
+function GUI.Init()
+    -- Window Background (rounded corners using multiple squares)
+    DrawingObjects.Window.Background = Drawing.new("Square")
+    DrawingObjects.Window.Background.Size = Vector2.new(500, 400)
+    DrawingObjects.Window.Background.Position = Vector2.new(700, 300)
+    DrawingObjects.Window.Background.Color = Colors.Background
+    DrawingObjects.Window.Background.Filled = true
+    DrawingObjects.Window.Background.Transparency = 0.95
+    DrawingObjects.Window.Background.Visible = true
 
-local separator = Drawing.new("Line")
-separator.From = windowPos + Vector2.new(leftWidth, headerHeight)
-separator.To = windowPos + Vector2.new(leftWidth, windowSize.Y - 10)
-separator.Thickness = 1
-separator.Color = Color3.fromRGB(100, 100, 100)
-separator.Transparency = 1
-separator.ZIndex = 2
-separator.Visible = true
+    -- Header
+    DrawingObjects.Window.Header = Drawing.new("Square")
+    DrawingObjects.Window.Header.Size = Vector2.new(500, 40)
+    DrawingObjects.Window.Header.Position = Vector2.new(700, 300)
+    DrawingObjects.Window.Header.Color = Colors.Header
+    DrawingObjects.Window.Header.Filled = true
+    DrawingObjects.Window.Header.Transparency = 0.98
+    DrawingObjects.Window.Header.Visible = true
 
-local menuBgs = {}
-local menuTexts = {}
-for i, name in ipairs(menus) do
-    local btnPos = windowPos + Vector2.new(10, headerHeight + 10 + (i - 1) * 35)
-    local btnBg = Drawing.new("Image")
-    btnBg.Data = pixel
-    btnBg.Size = Vector2.new(leftWidth - 20, 25)
-    btnBg.Position = btnPos
-    btnBg.Rounding = btnRounding
-    btnBg.Color = normalColor
-    btnBg.Transparency = 1
-    btnBg.ZIndex = 1
-    btnBg.Visible = true
-    menuBgs[i] = btnBg
+    -- Header Text
+    DrawingObjects.Window.HeaderText = Drawing.new("Text")
+    DrawingObjects.Window.HeaderText.Text = "Arkan Scripts"
+    DrawingObjects.Window.HeaderText.Size = 18
+    DrawingObjects.Window.HeaderText.Color = Colors.Text
+    DrawingObjects.Window.HeaderText.Outline = true
+    DrawingObjects.Window.HeaderText.OutlineColor = Color3.new(0, 0, 0)
+    DrawingObjects.Window.HeaderText.Font = Drawing.Fonts.UI
+    DrawingObjects.Window.HeaderText.Position = Vector2.new(720, 308)
+    DrawingObjects.Window.HeaderText.Visible = true
 
-    local txt = Drawing.new("Text")
-    txt.Text = name
-    txt.Size = 18
-    txt.Font = Drawing.Fonts.UI
-    txt.Color = textColor
-    txt.Center = true
-    txt.ZIndex = 2
-    txt.Visible = true
-    txt.Position = btnPos + Vector2.new(btnBg.Size.X / 2, (btnBg.Size.Y - txt.TextBounds.Y) / 2)
-    menuTexts[i] = txt
+    -- Minimize Button
+    DrawingObjects.Window.MinimizeButton = Drawing.new("Square")
+    DrawingObjects.Window.MinimizeButton.Size = Vector2.new(20, 20)
+    DrawingObjects.Window.MinimizeButton.Position = Vector2.new(1170, 305)
+    DrawingObjects.Window.MinimizeButton.Color = Colors.Accent
+    DrawingObjects.Window.MinimizeButton.Filled = true
+    DrawingObjects.Window.MinimizeButton.Transparency = 0.9
+    DrawingObjects.Window.MinimizeButton.Visible = true
+
+    DrawingObjects.Window.MinimizeButtonText = Drawing.new("Text")
+    DrawingObjects.Window.MinimizeButtonText.Text = "-"
+    DrawingObjects.Window.MinimizeButtonText.Size = 16
+    DrawingObjects.Window.MinimizeButtonText.Color = Colors.Text
+    DrawingObjects.Window.MinimizeButtonText.Outline = true
+    DrawingObjects.Window.MinimizeButtonText.OutlineColor = Color3.new(0, 0, 0)
+    DrawingObjects.Window.MinimizeButtonText.Font = Drawing.Fonts.UI
+    DrawingObjects.Window.MinimizeButtonText.Position = Vector2.new(1176, 306)
+    DrawingObjects.Window.MinimizeButtonText.Visible = true
+
+    -- Left Panel Background
+    DrawingObjects.LeftPanel.Background = Drawing.new("Square")
+    DrawingObjects.LeftPanel.Background.Size = Vector2.new(150, 360)
+    DrawingObjects.LeftPanel.Background.Position = Vector2.new(700, 340)
+    DrawingObjects.LeftPanel.Background.Color = Colors.Secondary
+    DrawingObjects.LeftPanel.Background.Filled = true
+    DrawingObjects.LeftPanel.Background.Transparency = 0.95
+    DrawingObjects.LeftPanel.Background.Visible = true
+
+    -- Right Panel Background
+    DrawingObjects.RightPanel.Background = Drawing.new("Square")
+    DrawingObjects.RightPanel.Background.Size = Vector2.new(350, 360)
+    DrawingObjects.RightPanel.Background.Position = Vector2.new(850, 340)
+    DrawingObjects.RightPanel.Background.Color = Colors.Background
+    DrawingObjects.RightPanel.Background.Filled = true
+    DrawingObjects.RightPanel.Background.Transparency = 0.95
+    DrawingObjects.RightPanel.Background.Visible = true
+
+    -- Create menu items
+    GUI.CreateMenuItems()
+    
+    -- Create minimized version (hidden initially)
+    GUI.CreateMinimizedVersion()
+    
+    -- Update content for initial selected menu
+    GUI.UpdateContentPanel()
 end
 
-local featureTexts = {}
-
-local minCircle = Drawing.new("Circle")
-minCircle.Radius = 20
-minCircle.NumSides = 32
-minCircle.Filled = true
-minCircle.Color = bgColor
-minCircle.Transparency = 1
-minCircle.ZIndex = 1
-minCircle.Visible = false
-minCircle.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
-
-local minText = Drawing.new("Text")
-minText.Text = "A"
-minText.Size = 20
-minText.Font = Drawing.Fonts.UI
-minText.Color = textColor
-minText.Center = true
-minText.ZIndex = 2
-minText.Visible = false
-minText.Position = minCircle.Position - Vector2.new(0, minText.TextBounds.Y / 2)
-
--- Functions
-local function updatePositions()
-    -- No need since window is not draggable, only minimized is
-end
-
-local function updateRightPanel()
-    for _, t in ipairs(featureTexts) do
-        t:Destroy()
+-- Create menu items in left panel
+function GUI.CreateMenuItems()
+    local menus = {"Combat", "Player", "World", "Teleport", "Settings"}
+    
+    for i, menuName in ipairs(menus) do
+        local yPos = 350 + (i * 40)
+        
+        -- Menu item background
+        local menuItem = Drawing.new("Square")
+        menuItem.Size = Vector2.new(140, 35)
+        menuItem.Position = Vector2.new(705, yPos)
+        menuItem.Color = menuName == GUIState.SelectedMenu and Colors.Primary or Colors.Secondary
+        menuItem.Filled = true
+        menuItem.Transparency = 0.9
+        menuItem.Visible = true
+        
+        -- Menu item text
+        local menuText = Drawing.new("Text")
+        menuText.Text = menuName
+        menuText.Size = 16
+        menuText.Color = Colors.Text
+        menuText.Outline = true
+        menuText.OutlineColor = Color3.new(0, 0, 0)
+        menuText.Font = Drawing.Fonts.UI
+        menuText.Position = Vector2.new(725, yPos + 10)
+        menuText.Visible = true
+        
+        table.insert(DrawingObjects.LeftPanel.MenuItems, {
+            Name = menuName,
+            Background = menuItem,
+            Text = menuText,
+            Position = Vector2.new(705, yPos),
+            Size = Vector2.new(140, 35)
+        })
     end
-    featureTexts = {}
-    local list = features[menus[selected]]
-    for i, f in ipairs(list) do
-        local txt = Drawing.new("Text")
-        txt.Text = "- " .. f
-        txt.Size = 16
-        txt.Font = Drawing.Fonts.UI
-        txt.Color = textColor
-        txt.Position = windowPos + Vector2.new(leftWidth + 10, headerHeight + 10 + (i - 1) * 25)
-        txt.ZIndex = 2
-        txt.Visible = true
-        table.insert(featureTexts, txt)
+end
+
+-- Create minimized version
+function GUI.CreateMinimizedVersion()
+    DrawingObjects.Minimized.Circle = Drawing.new("Circle")
+    DrawingObjects.Minimized.Circle.Radius = 25
+    DrawingObjects.Minimized.Circle.Position = Vector2.new(700, 300)
+    DrawingObjects.Minimized.Circle.Color = Colors.Primary
+    DrawingObjects.Minimized.Circle.Filled = true
+    DrawingObjects.Minimized.Circle.Transparency = 0.9
+    DrawingObjects.Minimized.Circle.NumSides = 32
+    DrawingObjects.Minimized.Circle.Visible = false
+    
+    DrawingObjects.Minimized.Text = Drawing.new("Text")
+    DrawingObjects.Minimized.Text.Text = "A"
+    DrawingObjects.Minimized.Text.Size = 16
+    DrawingObjects.Minimized.Text.Color = Colors.Text
+    DrawingObjects.Minimized.Text.Outline = true
+    DrawingObjects.Minimized.Text.OutlineColor = Color3.new(0, 0, 0)
+    DrawingObjects.Minimized.Text.Font = Drawing.Fonts.UI
+    DrawingObjects.Minimized.Text.Position = Vector2.new(695, 292)
+    DrawingObjects.Minimized.Text.Visible = false
+end
+
+-- Update content panel based on selected menu
+function GUI.UpdateContentPanel()
+    -- Clear previous content
+    for _, item in ipairs(DrawingObjects.RightPanel.ContentItems) do
+        item:Destroy()
+    end
+    for _, header in ipairs(DrawingObjects.RightPanel.SectionHeaders) do
+        header:Destroy()
+    end
+    
+    DrawingObjects.RightPanel.ContentItems = {}
+    DrawingObjects.RightPanel.SectionHeaders = {}
+    
+    local menuItems = MenuData[GUIState.SelectedMenu]
+    if not menuItems then return end
+    
+    -- Section header
+    local sectionHeader = Drawing.new("Text")
+    sectionHeader.Text = GUIState.SelectedMenu .. " Features"
+    sectionHeader.Size = 18
+    sectionHeader.Color = Colors.Text
+    sectionHeader.Outline = true
+    sectionHeader.OutlineColor = Color3.new(0, 0, 0)
+    sectionHeader.Font = Drawing.Fonts.UI
+    sectionHeader.Position = Vector2.new(870, 355)
+    sectionHeader.Visible = true
+    
+    table.insert(DrawingObjects.RightPanel.SectionHeaders, sectionHeader)
+    
+    -- Create feature items
+    for i, featureData in ipairs(menuItems) do
+        local featureName, featureState = featureData[1], featureData[2]
+        local yPos = 390 + (i * 45)
+        
+        -- Feature background
+        local featureBg = Drawing.new("Square")
+        featureBg.Size = Vector2.new(320, 40)
+        featureBg.Position = Vector2.new(860, yPos)
+        featureBg.Color = featureState and Colors.Primary or Colors.Secondary
+        featureBg.Filled = true
+        featureBg.Transparency = 0.9
+        featureBg.Visible = true
+        
+        -- Feature text
+        local featureText = Drawing.new("Text")
+        featureText.Text = featureName
+        featureText.Size = 15
+        featureText.Color = Colors.Text
+        featureText.Outline = true
+        featureText.OutlineColor = Color3.new(0, 0, 0)
+        featureText.Font = Drawing.Fonts.UI
+        featureText.Position = Vector2.new(880, yPos + 12)
+        featureText.Visible = true
+        
+        -- Status indicator
+        local statusIndicator = Drawing.new("Circle")
+        statusIndicator.Radius = 6
+        statusIndicator.Position = Vector2.new(1150, yPos + 20)
+        statusIndicator.Color = featureState and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+        statusIndicator.Filled = true
+        statusIndicator.Transparency = 0.9
+        statusIndicator.NumSides = 16
+        statusIndicator.Visible = true
+        
+        table.insert(DrawingObjects.RightPanel.ContentItems, {
+            Name = featureName,
+            Background = featureBg,
+            Text = featureText,
+            Status = statusIndicator,
+            Position = Vector2.new(860, yPos),
+            Size = Vector2.new(320, 40),
+            State = featureState
+        })
     end
 end
 
-local function toggleMinimize()
-    minimized = not minimized
-    if minimized then
-        shadow.Visible = false
-        bg.Visible = false
-        header.Visible = false
-        minBtn.Visible = false
-        separator.Visible = false
-        for _, bg in ipairs(menuBgs) do bg.Visible = false end
-        for _, txt in ipairs(menuTexts) do txt.Visible = false end
-        for _, txt in ipairs(featureTexts) do txt.Visible = false end
-        minCircle.Visible = true
-        minText.Visible = true
-        minText.Position = minCircle.Position - Vector2.new(0, minText.TextBounds.Y / 2)
-    else
-        shadow.Visible = true
-        bg.Visible = true
-        header.Visible = true
-        minBtn.Visible = true
-        separator.Visible = true
-        for _, bg in ipairs(menuBgs) do bg.Visible = true end
-        for _, txt in ipairs(menuTexts) do txt.Visible = true end
-        updateRightPanel()
-        minCircle.Visible = false
-        minText.Visible = false
+-- Toggle minimize state
+function GUI.ToggleMinimize()
+    GUIState.Minimized = not GUIState.Minimized
+    
+    -- Toggle visibility of main window elements
+    local visible = not GUIState.Minimized
+    DrawingObjects.Window.Background.Visible = visible
+    DrawingObjects.Window.Header.Visible = visible
+    DrawingObjects.Window.HeaderText.Visible = visible
+    DrawingObjects.Window.MinimizeButton.Visible = visible
+    DrawingObjects.Window.MinimizeButtonText.Visible = visible
+    DrawingObjects.LeftPanel.Background.Visible = visible
+    DrawingObjects.RightPanel.Background.Visible = visible
+    
+    -- Toggle menu items
+    for _, item in ipairs(DrawingObjects.LeftPanel.MenuItems) do
+        item.Background.Visible = visible
+        item.Text.Visible = visible
     end
+    
+    -- Toggle content items
+    for _, item in ipairs(DrawingObjects.RightPanel.ContentItems) do
+        item.Background.Visible = visible
+        item.Text.Visible = visible
+        if item.Status then
+            item.Status.Visible = visible
+        end
+    end
+    
+    -- Toggle section headers
+    for _, header in ipairs(DrawingObjects.RightPanel.SectionHeaders) do
+        header.Visible = visible
+    end
+    
+    -- Toggle minimized version
+    DrawingObjects.Minimized.Circle.Visible = GUIState.Minimized
+    DrawingObjects.Minimized.Text.Visible = GUIState.Minimized
 end
 
--- Initial Setup
-updateRightPanel()
+-- Improved click detection with tolerance
+function GUI.IsPointInBounds(point, boundsPos, boundsSize, tolerance)
+    tolerance = tolerance or 5
+    return point.X >= boundsPos.X - tolerance and 
+           point.X <= boundsPos.X + boundsSize.X + tolerance and
+           point.Y >= boundsPos.Y - tolerance and 
+           point.Y <= boundsPos.Y + boundsSize.Y + tolerance
+end
 
--- Input Handling
-UIS.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mousePos = Vector2.new(mouse.X, mouse.Y)
-        if not minimized then
-            -- Minimize button
-            if (mousePos - minBtn.Position).Magnitude <= minBtn.Radius + 2 then  -- +2 for accuracy buffer
-                toggleMinimize()
-                return
-            end
-            -- Menu buttons
-            for i, btnBg in ipairs(menuBgs) do
-                local topLeft = btnBg.Position
-                local bottomRight = topLeft + btnBg.Size
-                if mousePos.X >= topLeft.X - 2 and mousePos.X <= bottomRight.X + 2 and  -- Buffer for accuracy
-                   mousePos.Y >= topLeft.Y - 2 and mousePos.Y <= bottomRight.Y + 2 then
-                    selected = i
-                    updateRightPanel()
-                    return
+-- Handle mouse input
+function GUI.HandleInput()
+    local currentTime = tick()
+    
+    -- Check for minimize button click
+    if GUI.IsPointInBounds(
+        Vector2.new(mouse.X, mouse.Y), 
+        DrawingObjects.Window.MinimizeButton.Position, 
+        DrawingObjects.Window.MinimizeButton.Size
+    ) and mouse.Released then
+        GUI.ToggleMinimize()
+        mouse.Released = false
+        return
+    end
+    
+    -- Handle dragging when minimized
+    if GUIState.Minimized then
+        if GUI.IsPointInBounds(
+            Vector2.new(mouse.X, mouse.Y),
+            Vector2.new(
+                DrawingObjects.Minimized.Circle.Position.X - DrawingObjects.Minimized.Circle.Radius,
+                DrawingObjects.Minimized.Circle.Position.Y - DrawingObjects.Minimized.Circle.Radius
+            ),
+            Vector2.new(
+                DrawingObjects.Minimized.Circle.Radius * 2,
+                DrawingObjects.Minimized.Circle.Radius * 2
+            )
+        ) then
+            if mouse.Pressed and not GUIState.Dragging then
+                GUIState.Dragging = true
+                GUIState.DragOffset = Vector2.new(
+                    mouse.X - DrawingObjects.Minimized.Circle.Position.X,
+                    mouse.Y - DrawingObjects.Minimized.Circle.Position.Y
+                )
+            elseif mouse.Released then
+                -- Click to restore when minimized
+                if currentTime - GUIState.LastClickTime < 0.3 then -- Double click detection
+                    GUI.ToggleMinimize()
                 end
+                GUIState.LastClickTime = currentTime
+                GUIState.Dragging = false
+            end
+        end
+        
+        if GUIState.Dragging and mouse.Pressed then
+            DrawingObjects.Minimized.Circle.Position = Vector2.new(
+                mouse.X - GUIState.DragOffset.X,
+                mouse.Y - GUIState.DragOffset.Y
+            )
+            DrawingObjects.Minimized.Text.Position = Vector2.new(
+                mouse.X - GUIState.DragOffset.X - 5,
+                mouse.Y - GUIState.DragOffset.Y - 8
+            )
+        end
+        
+        return
+    end
+    
+    -- Handle window dragging
+    if GUI.IsPointInBounds(
+        Vector2.new(mouse.X, mouse.Y),
+        DrawingObjects.Window.Header.Position,
+        DrawingObjects.Window.Header.Size
+    ) and not GUI.IsPointInBounds(
+        Vector2.new(mouse.X, mouse.Y),
+        DrawingObjects.Window.MinimizeButton.Position,
+        DrawingObjects.Window.MinimizeButton.Size
+    ) then
+        if mouse.Pressed and not GUIState.Dragging then
+            GUIState.Dragging = true
+            GUIState.DragOffset = Vector2.new(
+                mouse.X - DrawingObjects.Window.Background.Position.X,
+                mouse.Y - DrawingObjects.Window.Background.Position.Y
+            )
+        end
+    end
+    
+    if GUIState.Dragging then
+        if mouse.Pressed then
+            local newPos = Vector2.new(
+                mouse.X - GUIState.DragOffset.X,
+                mouse.Y - GUIState.DragOffset.Y
+            )
+            
+            -- Update all positions
+            local offset = newPos - DrawingObjects.Window.Background.Position
+            
+            DrawingObjects.Window.Background.Position = newPos
+            DrawingObjects.Window.Header.Position = newPos
+            DrawingObjects.Window.HeaderText.Position = DrawingObjects.Window.HeaderText.Position + offset
+            DrawingObjects.Window.MinimizeButton.Position = Vector2.new(
+                newPos.X + 470,
+                newPos.Y + 5
+            )
+            DrawingObjects.Window.MinimizeButtonText.Position = Vector2.new(
+                newPos.X + 476,
+                newPos.Y + 6
+            )
+            DrawingObjects.LeftPanel.Background.Position = Vector2.new(newPos.X, newPos.Y + 40)
+            DrawingObjects.RightPanel.Background.Position = Vector2.new(newPos.X + 150, newPos.Y + 40)
+            
+            -- Update menu items
+            for _, item in ipairs(DrawingObjects.LeftPanel.MenuItems) do
+                item.Background.Position = item.Background.Position + offset
+                item.Text.Position = item.Text.Position + offset
+                item.Position = item.Position + offset
+            end
+            
+            -- Update content items
+            for _, item in ipairs(DrawingObjects.RightPanel.ContentItems) do
+                item.Background.Position = item.Background.Position + offset
+                item.Text.Position = item.Text.Position + offset
+                if item.Status then
+                    item.Status.Position = item.Status.Position + offset
+                end
+                item.Position = item.Position + offset
+            end
+            
+            -- Update section headers
+            for _, header in ipairs(DrawingObjects.RightPanel.SectionHeaders) do
+                header.Position = header.Position + offset
             end
         else
-            -- Minimized circle
-            if (mousePos - minCircle.Position).Magnitude <= minCircle.Radius + 2 then  -- Buffer
-                dragging = true
-                dragStart = mousePos
-                startPos = minCircle.Position
+            GUIState.Dragging = false
+        end
+    end
+    
+    -- Handle menu item clicks
+    if mouse.Released and not GUIState.Dragging then
+        for _, menuItem in ipairs(DrawingObjects.LeftPanel.MenuItems) do
+            if GUI.IsPointInBounds(
+                Vector2.new(mouse.X, mouse.Y),
+                menuItem.Position,
+                menuItem.Size
+            ) then
+                GUIState.SelectedMenu = menuItem.Name
+                
+                -- Update menu item colors
+                for _, item in ipairs(DrawingObjects.LeftPanel.MenuItems) do
+                    item.Background.Color = item.Name == GUIState.SelectedMenu and Colors.Primary or Colors.Secondary
+                end
+                
+                GUI.UpdateContentPanel()
+                break
             end
         end
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = Vector2.new(mouse.X, mouse.Y)
-        local delta = mousePos - dragStart
-        minCircle.Position = startPos + delta
-        minText.Position = minCircle.Position - Vector2.new(0, minText.TextBounds.Y / 2)
-    end
-end)
-
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if dragging then
-            local mousePos = Vector2.new(mouse.X, mouse.Y)
-            if (mousePos - dragStart).Magnitude < 5 then  -- Click threshold
-                toggleMinimize()
+        
+        -- Handle feature toggles
+        for _, feature in ipairs(DrawingObjects.RightPanel.ContentItems) do
+            if GUI.IsPointInBounds(
+                Vector2.new(mouse.X, mouse.Y),
+                feature.Position,
+                feature.Size
+            ) then
+                feature.State = not feature.State
+                feature.Background.Color = feature.State and Colors.Primary or Colors.Secondary
+                feature.Status.Color = feature.State and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 50, 50)
+                
+                -- Update the data
+                for _, featureData in ipairs(MenuData[GUIState.SelectedMenu]) do
+                    if featureData[1] == feature.Name then
+                        featureData[2] = feature.State
+                        break
+                    end
+                end
+                break
             end
-            dragging = false
+        end
+        
+        mouse.Released = false
+    end
+end
+
+-- Update mouse state (this should be called from your mouse input handlers)
+function GUI.UpdateMouse(x, y, pressed, released)
+    mouse.X = x
+    mouse.Y = y
+    mouse.Pressed = pressed
+    mouse.Released = released
+end
+
+-- Cleanup function
+function GUI.Destroy()
+    for _, obj in pairs(DrawingObjects.Window) do
+        if obj and type(obj.Destroy) == "function" then
+            obj:Destroy()
         end
     end
-end)
-
--- Hover and Selected Visuals
-RS.RenderStepped:Connect(function()
-    local mousePos = Vector2.new(mouse.X, mouse.Y)
-    for i, btnBg in ipairs(menuBgs) do
-        local isHover = false
-        local topLeft = btnBg.Position
-        local bottomRight = topLeft + btnBg.Size
-        if mousePos.X >= topLeft.X and mousePos.X <= bottomRight.X and
-           mousePos.Y >= topLeft.Y and mousePos.Y <= bottomRight.Y then
-            isHover = true
-        end
-        if i == selected then
-            btnBg.Color = selectedColor
-        elseif isHover then
-            btnBg.Color = hoverColor
-        else
-            btnBg.Color = normalColor
-        end
+    
+    for _, item in ipairs(DrawingObjects.LeftPanel.MenuItems) do
+        if item.Background then item.Background:Destroy() end
+        if item.Text then item.Text:Destroy() end
     end
-end)
+    
+    for _, item in ipairs(DrawingObjects.RightPanel.ContentItems) do
+        if item.Background then item.Background:Destroy() end
+        if item.Text then item.Text:Destroy() end
+        if item.Status then item.Status:Destroy() end
+    end
+    
+    for _, header in ipairs(DrawingObjects.RightPanel.SectionHeaders) do
+        if header then header:Destroy() end
+    end
+    
+    if DrawingObjects.LeftPanel.Background then DrawingObjects.LeftPanel.Background:Destroy() end
+    if DrawingObjects.RightPanel.Background then DrawingObjects.RightPanel.Background:Destroy() end
+    if DrawingObjects.Minimized.Circle then DrawingObjects.Minimized.Circle:Destroy() end
+    if DrawingObjects.Minimized.Text then DrawingObjects.Minimized.Text:Destroy() end
+end
 
--- Cleanup on script end (optional, but good practice)
--- cleardrawcache() can be called if needed
+-- Initialize the GUI
+GUI.Init()
+
+-- Return the GUI module
+return {
+    GUI = GUI,
+    UpdateMouse = GUI.UpdateMouse,
+    HandleInput = GUI.HandleInput,
+    Destroy = GUI.Destroy
+}
